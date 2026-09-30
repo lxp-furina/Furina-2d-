@@ -103,8 +103,8 @@ IDataService（登录、读存档、写存档、提交成绩、拉排行榜）
 
 **编辑器里还需要手动完成的步骤**（场景文件和 meta 文件必须由编辑器生成，不要手写）：
 
-1. 用 Cocos Creator 打开 `client/`。
-2. 在 `assets` 上右键，新建 Scene，命名为 `Prototype`，双击打开。
+1. 用 Cocos Creator 打开 `client/`。编辑器会导入脚本并生成 `.meta` 文件，这些 meta 文件需要提交。
+2. 场景 `assets/prototype.fire` **已经建好**，但目前是空场景，还没有挂脚本。双击打开它。
 3. 选中 `Canvas`，添加组件，选择自定义脚本 `PrototypeBootstrap`。
 4. 保存后预览。
 
