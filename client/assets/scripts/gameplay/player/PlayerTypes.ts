@@ -12,6 +12,7 @@ export const PlayerEvent = {
     Won: 'player-won',
     FormChanged: 'player-form-changed',
     FormRejected: 'player-form-rejected',
+    PoundLanded: 'player-pound-landed',
 };
 
 /** 机关只通过这个接口了解玩家，避免机关和 PlayerController 互相引用。 */

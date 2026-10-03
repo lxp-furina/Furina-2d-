@@ -1,1 +1,6 @@
-{}
+{
+  "migrate-history": [
+    "cloud-function"
+  ],
+  "start-scene": "0d2982b5-3c78-495c-b554-46f6c37ec617"
+}

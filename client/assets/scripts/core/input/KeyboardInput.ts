@@ -17,8 +17,10 @@ function bind(action: GameAction, keyCodes: number[]): void {
 
 bind(GameAction.Left, [KEY.a, KEY.left]);
 bind(GameAction.Right, [KEY.d, KEY.right]);
+bind(GameAction.Down, [KEY.s, KEY.down]);
 bind(GameAction.Jump, [KEY.space, KEY.w, KEY.up, KEY.k]);
-bind(GameAction.CycleForm, [KEY.j]);
+bind(GameAction.Skill, [KEY.j]);
+bind(GameAction.CycleForm, [KEY.l]);
 bind(GameAction.FormWater, [DIGIT_1, KEY.num1]);
 bind(GameAction.FormIce, [DIGIT_2, KEY.num2]);
 bind(GameAction.FormSteam, [DIGIT_3, KEY.num3]);

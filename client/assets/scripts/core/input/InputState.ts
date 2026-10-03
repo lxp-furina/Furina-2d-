@@ -5,7 +5,9 @@
 export enum GameAction {
     Left,
     Right,
+    Down,
     Jump,
+    Skill,
     CycleForm,
     FormWater,
     FormIce,

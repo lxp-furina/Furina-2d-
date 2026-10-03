@@ -85,6 +85,13 @@ export const PlayerTuning = {
     windMaxRiseSpeed: 420,
     /** 上升速度超过上限时，每秒回落的速度 */
     riseSettleRate: 1200,
+    /** 留下冰雕时，本体被放到冰雕顶上再往上多留的空隙（像素） */
+    statuePopGap: 2,
+    /** 空中造出的冰雕悬停多久后才开始下落（秒） */
+    airStatueHangTime: 0.8,
+    /** 下砸：起砸前在空中停顿的时间，以及急坠速度 */
+    groundPoundHangTime: 0.25,
+    groundPoundSpeed: 1400,
     /** 低于该高度视为掉出关卡 */
     killY: -200,
 };

@@ -44,9 +44,14 @@ export default class PrototypeBootstrap extends cc.Component {
 
         const level = LevelBuilder.build(PROTOTYPE_LEVEL, world);
 
-        // 原型阶段规则：任意压力板压下，打开所有门
+        // 原型阶段规则：任意压力板压下时打开所有门，全部弹起时关上
+        const refreshDoors = () => {
+            const anyPressed = level.plates.some((plate) => plate.pressed);
+            level.doors.forEach((door) => (anyPressed ? door.open() : door.close()));
+        };
         level.plates.forEach((plate) => {
-            plate.node.on(PlateEvent.Pressed, () => level.doors.forEach((door) => door.open()));
+            plate.node.on(PlateEvent.Pressed, refreshDoors);
+            plate.node.on(PlateEvent.Released, refreshDoors);
         });
 
         this.player = PlayerController.create(world, level.spawnPosition);
@@ -118,11 +123,12 @@ export default class PrototypeBootstrap extends cc.Component {
             return;
         }
         const form = this.player.form;
-        const lines = [`形态：${FORM_CONFIGS[form].name}    [J] 切换   [1][2][3] 直接选择 水/冰/蒸汽`];
+        const lines = [`形态：${FORM_CONFIGS[form].name}    [L] 切换   [1][2][3] 直接选择 水/冰/蒸汽`];
         if (form === PlayerForm.Steam) {
             lines.push(`蒸汽剩余：${this.player.steamTimeLeft.toFixed(1)}s`);
         }
-        lines.push('[A/D] 移动   [空格/W] 跳跃   [R] 重来   [B] 显示碰撞框');
+        lines.push('[A/D] 移动   [空格/W/K] 跳跃   [J] 技能（冰：留下冰雕，空中按住 S 为下砸）');
+        lines.push('[R] 重来   [B] 显示碰撞框');
         this.hudLabel.string = lines.join('\n');
     }
 

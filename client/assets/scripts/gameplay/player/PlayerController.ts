@@ -1,6 +1,7 @@
 import { GameAction, InputState } from '../../core/input/InputState';
 import PassThrough from '../mechanisms/PassThrough';
 import { FORM_CONFIGS, FORM_CYCLE, PlayerForm, PlayerTuning } from './FormConfig';
+import IceStatue from './IceStatue';
 import { getPlayerTriggers, IPlayer, PlayerEvent, ZoneKind } from './PlayerTypes';
 import { ensureGraphics, fillRect, strokeRect } from '../../utils/Draw';
 
@@ -63,6 +64,11 @@ export default class PlayerController extends cc.Component implements IPlayer {
     private facing = 1;
     private finished = false;
     private zoneCounts: { [kind: string]: number } = {};
+    private statue: IceStatue = null;
+    private groundedOnTerrain = false;
+    private airStatueUsed = false;
+    private pounding = false;
+    private poundHangTimer = 0;
 
     get form(): PlayerForm {
         return this._form;
@@ -128,6 +134,7 @@ export default class PlayerController extends cc.Component implements IPlayer {
 
         this._form = target;
         this.isJumping = false;
+        this.pounding = false;
         if (target === PlayerForm.Steam) {
             this.steamTimer = PlayerTuning.steamDuration;
         }
@@ -153,8 +160,89 @@ export default class PlayerController extends cc.Component implements IPlayer {
         }
     }
 
-    private overlapsSolidFor(form: PlayerForm): boolean {
+    // ---------- 形态技能 ----------
+
+    /** 技能键：冰 = 冰雕残影，冰在空中按住下 = 下砸；水 = 水弹、蒸汽 = 凝雨（未实现）。 */
+    private handleSkillInput(): void {
+        if (!InputState.consumePressed(GameAction.Skill) || this.pounding) {
+            return;
+        }
+        let used = false;
+        if (this._form === PlayerForm.Ice) {
+            used = !this.grounded && InputState.isHeld(GameAction.Down) ? this.startGroundPound() : this.tryCreateStatue();
+        }
+        if (!used) {
+            this.playRejectFeedback();
+        }
+    }
+
+    /**
+     * 留下冰雕，本体变回水。同一时间只保留一座冰雕。
+     * 在空中时冰雕出现在脚下，可以踩着再跳一次；脚下没空间或站在地上时，冰雕留在原地，本体移到它顶上。
+     * 不是站在真正的地面上时（空中或踩着冰雕），每次离地只能造一次，防止无限往上爬。
+     */
+    private tryCreateStatue(): boolean {
+        const fromTerrain = this.groundedOnTerrain;
+        if (!fromTerrain && this.airStatueUsed) {
+            return false;
+        }
+
+        const position = this.node.getPosition();
         const center = this.node.convertToWorldSpaceAR(cc.Vec2.ZERO);
+        const step = PLAYER_SIZE + PlayerTuning.statuePopGap;
+        let statuePosition: cc.Vec2;
+        let playerPosition: cc.Vec2;
+        let hangTime = 0;
+        if (!this.grounded && !this.overlapsSolidFor(PlayerForm.Ice, cc.v2(center.x, center.y - step))) {
+            statuePosition = cc.v2(position.x, position.y - step);
+            playerPosition = position;
+            hangTime = PlayerTuning.airStatueHangTime;
+        } else if (!this.overlapsSolidFor(PlayerForm.Water, cc.v2(center.x, center.y + step))) {
+            statuePosition = position;
+            playerPosition = cc.v2(position.x, position.y + step);
+        } else {
+            return false;
+        }
+
+        const newStatue = IceStatue.create(this.node.parent, statuePosition, PLAYER_SIZE, hangTime);
+        if (this.statue && this.statue.isValid) {
+            this.statue.shatter();
+        }
+        this.statue = newStatue;
+        if (!fromTerrain) {
+            this.airStatueUsed = true;
+        }
+
+        this.node.setPosition(playerPosition);
+        this.body.syncPosition(false);
+        this.body.linearVelocity = cc.v2(this.body.linearVelocity.x, 0);
+        this.setForm(PlayerForm.Water);
+        return true;
+    }
+
+    /** 下砸：空中短暂停顿后竖直急坠，落地前不能左右移动。 */
+    private startGroundPound(): boolean {
+        this.pounding = true;
+        this.poundHangTimer = PlayerTuning.groundPoundHangTime;
+        this.isJumping = false;
+        this.body.linearVelocity = cc.v2(0, 0);
+        return true;
+    }
+
+    private updateGroundPound(dt: number, velocity: cc.Vec2): void {
+        velocity.x = 0;
+        if (this.grounded) {
+            this.pounding = false;
+            velocity.y = 0;
+            this.playPoundLandFeedback();
+            this.node.emit(PlayerEvent.PoundLanded);
+            return;
+        }
+        this.poundHangTimer -= dt;
+        velocity.y = this.poundHangTimer > 0 ? 0 : -PlayerTuning.groundPoundSpeed;
+    }
+
+    private overlapsSolidFor(form: PlayerForm, center: cc.Vec2 = this.node.convertToWorldSpaceAR(cc.Vec2.ZERO)): boolean {
         const shrink = 3;
         const size = PLAYER_SIZE - shrink * 2;
         const rect = cc.rect(center.x - size / 2, center.y - size / 2, size, size);
@@ -171,6 +259,7 @@ export default class PlayerController extends cc.Component implements IPlayer {
             return;
         }
         this.handleFormInput();
+        this.handleSkillInput();
         this.applyZoneEffects();
         if (this.finished) {
             return;
@@ -210,12 +299,23 @@ export default class PlayerController extends cc.Component implements IPlayer {
         const cfg = FORM_CONFIGS[this._form];
         const velocity = this.body.linearVelocity;
 
-        this.grounded = velocity.y <= 1 && this.checkGrounded();
+        const ground = velocity.y <= 1 ? this.findGroundColliders() : [];
+        this.grounded = ground.length > 0;
+        this.groundedOnTerrain = ground.some((collider) => !collider.getComponent(IceStatue));
+        if (this.groundedOnTerrain) {
+            this.airStatueUsed = false;
+        }
         this.coyoteTimer = this.grounded ? PlayerTuning.coyoteTime : this.coyoteTimer - dt;
         if (InputState.consumePressed(GameAction.Jump)) {
             this.jumpBufferTimer = PlayerTuning.jumpBufferTime;
         } else {
             this.jumpBufferTimer -= dt;
+        }
+
+        if (this.pounding) {
+            this.updateGroundPound(dt, velocity);
+            this.body.linearVelocity = velocity;
+            return;
         }
 
         // 水平
@@ -260,8 +360,8 @@ export default class PlayerController extends cc.Component implements IPlayer {
         this.body.linearVelocity = velocity;
     }
 
-    /** 从脚底两个角向下发射短射线检测地面，忽略传感器和当前形态可穿过的物体。 */
-    private checkGrounded(): boolean {
+    /** 从脚底两个角向下发射短射线检测地面，忽略传感器和当前形态可穿过的物体，返回踩到的碰撞体。 */
+    private findGroundColliders(): cc.PhysicsCollider[] {
         const physics = cc.director.getPhysicsManager();
         const center = this.node.convertToWorldSpaceAR(cc.Vec2.ZERO);
         const half = PLAYER_SIZE / 2;
@@ -269,13 +369,17 @@ export default class PlayerController extends cc.Component implements IPlayer {
         const endY = center.y - half - GROUND_PROBE_DEPTH;
         const probeXs = [center.x - half + GROUND_PROBE_INSET, center.x + half - GROUND_PROBE_INSET];
 
-        return probeXs.some((x) => {
-            const results = physics.rayCast(cc.v2(x, startY), cc.v2(x, endY), cc.RayCastType.All);
-            return results.some((result) => {
+        const found: cc.PhysicsCollider[] = [];
+        probeXs.forEach((x) => {
+            physics.rayCast(cc.v2(x, startY), cc.v2(x, endY), cc.RayCastType.All).forEach((result) => {
                 const collider = result.collider;
-                return collider.node !== this.node && !collider.sensor && !PassThrough.isPassable(collider, this._form);
+                const isGround = collider.node !== this.node && !collider.sensor && !PassThrough.isPassable(collider, this._form);
+                if (isGround && found.indexOf(collider) < 0) {
+                    found.push(collider);
+                }
             });
         });
+        return found;
     }
 
     // ---------- 结束 ----------
@@ -330,6 +434,12 @@ export default class PlayerController extends cc.Component implements IPlayer {
         cc.Tween.stopAllByTarget(this.visual);
         this.visual.scale = 1;
         cc.tween(this.visual).to(0.06, { scale: 1.2 }).to(0.1, { scale: 1 }).start();
+    }
+
+    private playPoundLandFeedback(): void {
+        cc.Tween.stopAllByTarget(this.visual);
+        this.visual.scale = 1;
+        cc.tween(this.visual).to(0.05, { scaleX: 1.3, scaleY: 0.7 }).to(0.12, { scaleX: 1, scaleY: 1 }).start();
     }
 
     private playRejectFeedback(): void {
